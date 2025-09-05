@@ -1,10 +1,12 @@
+version: "3.8"
+
 services:
   nginx:
     restart: on-failure
     image: nginx
     ports:
-      - ${NGINX_PORT:-8080}:80      # Cambié el host port de 80 a 8080 para evitar conflicto
-      - ${NGINX_TLS_PORT:-8443}:443 # Cambié el host port de 443 a 8443 (ajusta a tu necesidad real)
+      - ${NGINX_PORT:-8080}:80
+      - ${NGINX_TLS_PORT:-8443}:443
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf
       - ./nginx/ssl/certificate.crt:/etc/nginx/ssl/certificate.crt
@@ -14,10 +16,13 @@ services:
     restart: on-failure
     image: minio/minio
     environment:
-      - MINIO_BROWSER_REDIRECT_URL=${APPFLOWY_BASE_URL:?err}/minio
+      - MINIO_BROWSER_REDIRECT_URL=${APPFLOWY_BASE_URL:-http://localhost:8080}/minio
       - MINIO_ROOT_USER=${APPFLOWY_S3_ACCESS_KEY:-minioadmin}
       - MINIO_ROOT_PASSWORD=${APPFLOWY_S3_SECRET_KEY:-minioadmin}
     command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
     volumes:
       - minio_data:/data
 
@@ -30,7 +35,7 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-password}
       - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER}", "-d", "${POSTGRES_DB}"]
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER:-postgres}", "-d", "${POSTGRES_DB:-postgres}"]
       interval: 5s
       timeout: 5s
       retries: 12
@@ -54,7 +59,7 @@ services:
       - GOTRUE_JWT_EXP=${GOTRUE_JWT_EXP}
       - GOTRUE_JWT_ADMIN_GROUP_NAME=supabase_admin
       - GOTRUE_DB_DRIVER=postgres
-      - API_EXTERNAL_URL=${API_EXTERNAL_URL}
+      - API_EXTERNAL_URL=${API_EXTERNAL_URL:-http://localhost:9999}
       - DATABASE_URL=${GOTRUE_DATABASE_URL}
       - PORT=9999
       - GOTRUE_SMTP_HOST=${GOTRUE_SMTP_HOST}
@@ -70,7 +75,6 @@ services:
       - GOTRUE_SMTP_MAX_FREQUENCY=${GOTRUE_SMTP_MAX_FREQUENCY:-1ns}
       - GOTRUE_RATE_LIMIT_EMAIL_SENT=${GOTRUE_RATE_LIMIT_EMAIL_SENT:-100}
       - GOTRUE_MAILER_AUTOCONFIRM=${GOTRUE_MAILER_AUTOCONFIRM:-false}
-      # Para proveedores externos, define solo si los usas, si no, asegúrate que estén deshabilitados:
       - GOTRUE_EXTERNAL_GOOGLE_ENABLED=${GOTRUE_EXTERNAL_GOOGLE_ENABLED:-false}
       - GOTRUE_EXTERNAL_GITHUB_ENABLED=${GOTRUE_EXTERNAL_GITHUB_ENABLED:-false}
       - GOTRUE_EXTERNAL_DISCORD_ENABLED=${GOTRUE_EXTERNAL_DISCORD_ENABLED:-false}
@@ -89,19 +93,19 @@ services:
     environment:
       - RUST_LOG=${RUST_LOG:-info}
       - APPFLOWY_ENVIRONMENT=production
-      - APPFLOWY_DATABASE_URL=${APPFLOWY_DATABASE_URL}
-      - APPFLOWY_REDIS_URI=${APPFLOWY_REDIS_URI}
+      - APPFLOWY_DATABASE_URL=${APPFLOWY_DATABASE_URL:-postgresql://postgres:password@postgres:5432/postgres}
+      - APPFLOWY_REDIS_URI=${APPFLOWY_REDIS_URI:-redis://redis:6379}
       - APPFLOWY_GOTRUE_JWT_SECRET=${GOTRUE_JWT_SECRET}
       - APPFLOWY_GOTRUE_JWT_EXP=${GOTRUE_JWT_EXP}
-      - APPFLOWY_GOTRUE_BASE_URL=${APPFLOWY_GOTRUE_BASE_URL}
-      - APPFLOWY_S3_CREATE_BUCKET=${APPFLOWY_S3_CREATE_BUCKET}
-      - APPFLOWY_S3_USE_MINIO=${APPFLOWY_S3_USE_MINIO}
-      - APPFLOWY_S3_MINIO_URL=${APPFLOWY_S3_MINIO_URL}
-      - APPFLOWY_S3_ACCESS_KEY=${APPFLOWY_S3_ACCESS_KEY}
-      - APPFLOWY_S3_SECRET_KEY=${APPFLOWY_S3_SECRET_KEY}
-      - APPFLOWY_S3_BUCKET=${APPFLOWY_S3_BUCKET}
-      - APPFLOWY_S3_REGION=${APPFLOWY_S3_REGION}
-      - APPFLOWY_S3_PRESIGNED_URL_ENDPOINT=${APPFLOWY_S3_PRESIGNED_URL_ENDPOINT}
+      - APPFLOWY_GOTRUE_BASE_URL=${APPFLOWY_GOTRUE_BASE_URL:-http://gotrue:9999}
+      - APPFLOWY_S3_CREATE_BUCKET=${APPFLOWY_S3_CREATE_BUCKET:-true}
+      - APPFLOWY_S3_USE_MINIO=${APPFLOWY_S3_USE_MINIO:-true}
+      - APPFLOWY_S3_MINIO_URL=${APPFLOWY_S3_MINIO_URL:-http://minio:9000}
+      - APPFLOWY_S3_ACCESS_KEY=${APPFLOWY_S3_ACCESS_KEY:-minioadmin}
+      - APPFLOWY_S3_SECRET_KEY=${APPFLOWY_S3_SECRET_KEY:-minioadmin}
+      - APPFLOWY_S3_BUCKET=${APPFLOWY_S3_BUCKET:-appflowy}
+      - APPFLOWY_S3_REGION=${APPFLOWY_S3_REGION:-us-east-1}
+      - APPFLOWY_S3_PRESIGNED_URL_ENDPOINT=${APPFLOWY_S3_PRESIGNED_URL_ENDPOINT:-http://localhost:9000}
       - APPFLOWY_MAILER_SMTP_HOST=${APPFLOWY_MAILER_SMTP_HOST}
       - APPFLOWY_MAILER_SMTP_PORT=${APPFLOWY_MAILER_SMTP_PORT}
       - APPFLOWY_MAILER_SMTP_USERNAME=${APPFLOWY_MAILER_SMTP_USERNAME}
@@ -113,9 +117,12 @@ services:
       - AI_SERVER_HOST=${AI_SERVER_HOST}
       - AI_SERVER_PORT=${AI_SERVER_PORT}
       - AI_OPENAI_API_KEY=${AI_OPENAI_API_KEY}
-      - APPFLOWY_WEB_URL=${APPFLOWY_WEB_URL}
+      - APPFLOWY_WEB_URL=${APPFLOWY_WEB_URL:-http://localhost:8080}
     depends_on:
       - gotrue
+      - minio
+      - postgres
+      - redis
 
   admin_frontend:
     restart: on-failure
@@ -134,22 +141,22 @@ services:
     restart: on-failure
     image: appflowyinc/appflowy_ai:${APPFLOWY_AI_VERSION:-latest}
     environment:
-      - AI_SERVER_PORT=${AI_SERVER_PORT}
+      - AI_SERVER_PORT=${AI_SERVER_PORT:-5001}
       - OPENAI_API_KEY=${AI_OPENAI_API_KEY}
       - DEFAULT_AI_MODEL=gpt-4.1-mini
       - DEFAULT_AI_COMPLETION_MODEL=gpt-4.1-mini
       - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY}
       - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}
       - AZURE_OPENAI_API_VERSION=${AZURE_OPENAI_API_VERSION}
-      - APPFLOWY_S3_ACCESS_KEY=${APPFLOWY_S3_ACCESS_KEY}
-      - APPFLOWY_S3_SECRET_KEY=${APPFLOWY_S3_SECRET_KEY}
-      - APPFLOWY_S3_BUCKET=${APPFLOWY_S3_BUCKET}
-      - APPFLOWY_S3_REGION=${APPFLOWY_S3_REGION}
-      - AI_DATABASE_URL=${APPFLOWY_DATABASE_URL}
-      - AI_REDIS_URL=${APPFLOWY_REDIS_URI}
-      - AI_USE_MINIO=${APPFLOWY_S3_USE_MINIO}
-      - AI_MINIO_URL=${APPFLOWY_S3_MINIO_URL}
-      - AI_APPFLOWY_HOST=${APPFLOWY_BASE_URL}
+      - APPFLOWY_S3_ACCESS_KEY=${APPFLOWY_S3_ACCESS_KEY:-minioadmin}
+      - APPFLOWY_S3_SECRET_KEY=${APPFLOWY_S3_SECRET_KEY:-minioadmin}
+      - APPFLOWY_S3_BUCKET=${APPFLOWY_S3_BUCKET:-appflowy}
+      - APPFLOWY_S3_REGION=${APPFLOWY_S3_REGION:-us-east-1}
+      - AI_DATABASE_URL=${APPFLOWY_DATABASE_URL:-postgresql://postgres:password@postgres:5432/postgres}
+      - AI_REDIS_URL=${APPFLOWY_REDIS_URI:-redis://redis:6379}
+      - AI_USE_MINIO=${APPFLOWY_S3_USE_MINIO:-true}
+      - AI_MINIO_URL=${APPFLOWY_S3_MINIO_URL:-http://minio:9000}
+      - AI_APPFLOWY_HOST=${APPFLOWY_BASE_URL:-http://localhost:8080}
       - APPFLOWY_GOTRUE_JWT_SECRET=${GOTRUE_JWT_SECRET}
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:5001/health" ]
@@ -164,3 +171,8 @@ services:
   appflowy_worker:
     restart: on-failure
     image: appflowyinc/appflowy_worker
+    # agrega la configuración necesaria según la documentación oficial si tu worker la requiere
+
+volumes:
+  minio_data:
+  postgres_data:
